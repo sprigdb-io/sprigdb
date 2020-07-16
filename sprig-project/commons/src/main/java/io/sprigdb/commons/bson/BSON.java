@@ -11,19 +11,15 @@ import static io.sprigdb.commons.bson.BSONValueExtractors.LONG_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.NULL_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.STRING_EXTRACTOR;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Stream;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import io.sprigdb.commons.exceptions.BSONDisorientedException;
 import io.sprigdb.commons.exceptions.BSONEmptyException;
 import io.sprigdb.commons.serializer.Marshallable;
 import io.sprigdb.commons.util.HexUtil;
-import lombok.AllArgsConstructor;
-import lombok.Data;
 
 public class BSON implements Marshallable {
-
 
 	private static final long serialVersionUID = -768651109633666630L;
 
@@ -39,15 +35,19 @@ public class BSON implements Marshallable {
 	public static final byte ARRAY = 10;
 
 	private static final BSONExtractor<?>[] EXTRACTORS = new BSONExtractor[] { NULL_EXTRACTOR, INTEGER_EXTRACTOR,
-	LONG_EXTRACTOR, FLOAT_EXTRACTOR, DOUBLE_EXTRACTOR, NULL_EXTRACTOR, BOOLEAN_TRUE_EXTRACTOR,
-	BOOLEAN_FALSE_EXTRACTOR, STRING_EXTRACTOR, BSON_OBJECT_EXTRACTOR, BSON_LIST_EXTRACTOR };
+			LONG_EXTRACTOR, FLOAT_EXTRACTOR, DOUBLE_EXTRACTOR, NULL_EXTRACTOR, BOOLEAN_TRUE_EXTRACTOR,
+			BOOLEAN_FALSE_EXTRACTOR, STRING_EXTRACTOR, BSON_OBJECT_EXTRACTOR, BSON_LIST_EXTRACTOR };
 	byte[] bs;
 	private int offset;
 	private int length;
 
 	public BSON(byte[] bs, int offset, int length) {
 
-		if (bs == null || bs.length == 0) {
+		if (bs == null) {
+			throw new NullPointerException();
+		}
+
+		if (bs.length == 0 || length == 0) {
 			throw new BSONEmptyException();
 		}
 
@@ -73,15 +73,15 @@ public class BSON implements Marshallable {
 		return bs[offset];
 	}
 
-	public List<Entry> getBSONEntries() {
+	public Map<String, BSON> getAsMap() {
 
-		List<Entry> list = new ArrayList<>();
+		Map<String, BSON> map = new LinkedHashMap<>();
 		int off = this.offset;
 		int limit = INTEGER_EXTRACTOR.getValue(this, off);
 		off += 5;
 		limit += off;
 
-		if (limit > (offset + length))
+		if (limit != (offset + length))
 			throw new BSONDisorientedException();
 
 		String key;
@@ -93,33 +93,32 @@ public class BSON implements Marshallable {
 			off += len;
 
 			if (this.bs[off] == BSON.INTEGER || this.bs[off] == BSON.FLOAT) {
-				list.add(new Entry(key, new BSON(this.bs, off, 5)));
+				map.put(key, new BSON(this.bs, off, 5));
 				off += 5;
 			} else if (this.bs[off] == BSON.LONG || this.bs[off] == BSON.DOUBLE) {
-				list.add(new Entry(key, new BSON(this.bs, off, 9)));
+				map.put(key, new BSON(this.bs, off, 9));
 				off += 9;
-			} else if (this.bs[off] >= 5 && this.bs[off] <= 7) {
-				list.add(new Entry(key, new BSON(this.bs, off, 1)));
+			} else if (this.bs[off] == BSON.NULL || this.bs[off] == BSON.BOOLEAN_FALSE
+					|| this.bs[off] == BSON.BOOLEAN_TRUE) {
+				map.put(key, new BSON(this.bs, off, 1));
 				off += 1;
 			} else {
 				len = 5 + INTEGER_EXTRACTOR.getValue(this, off);
-				list.add(new Entry(key, new BSON(this.bs, off, len)));
+				map.put(key, new BSON(this.bs, off, len));
 				off += len;
 			}
 		}
 
-		return list;
+		return map;
 	}
-	
+
 	@Override
 	public String toString() {
-		StringBuilder sb = new StringBuilder("BSON Object : [ offset: ")
-				.append(this.offset)
-				.append(", length: ")
-				.append(this.length)
-				.append("]\n");
-		for (int i = offset; i< (offset+length); i++)
-			sb.append(HexUtil.hexByte(this.bs[i])).append(" ");
+
+		StringBuilder sb = new StringBuilder("BSON Object :\n[ offset: ").append(this.offset).append(", length: ")
+				.append(this.length).append("]\n");
+		sb.append(HexUtil.readableHexArray(this.bs, this.offset, this.length, 16));
+
 		return sb.toString();
 	}
 
@@ -130,9 +129,6 @@ public class BSON implements Marshallable {
 
 	@Override
 	public int hashCode() {
-
-		if (this.bs == null || this.bs.length == 0)
-			return 0;
 
 		int result = 1;
 		for (int i = this.offset; i < (this.offset + this.length); i++) {
@@ -159,10 +155,10 @@ public class BSON implements Marshallable {
 		int i = this.offset;
 		int j = b.offset;
 
-		while (i < (i + this.length) && b.bs[j++] == this.bs[i++])
+		while (i < (this.offset + this.length) && b.bs[j++] == this.bs[i++])
 			;
 
-		return i == this.offset + this.length;
+		return (i == this.offset + this.length) && (j == b.offset + b.length);
 	}
 
 	@Override
@@ -174,16 +170,17 @@ public class BSON implements Marshallable {
 
 	@Override
 	public void deSerialize(byte[] bytes) {
+		
+		if (bytes == null) {
+			throw new NullPointerException();
+		}
+
+		if (bytes.length == 0) {
+			throw new BSONEmptyException();
+		}
+		
 		this.bs = bytes;
 		this.offset = 0;
 		this.length = bytes.length;
-	}
-
-	@Data
-	@AllArgsConstructor
-	public static class Entry {
-	
-		private String key;
-		private BSON value;
 	}
 }

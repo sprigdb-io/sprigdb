@@ -42,8 +42,6 @@ public class BSONValueExtractors {
 
 	public static final BSONExtractor<Boolean> BOOLEAN_FALSE_EXTRACTOR = (obj, off) -> Boolean.FALSE;
 
-	public static final BSONExtractor<BSON> BSON_OBJECT_EXTRACTOR = (obj, off) -> obj;
-
 	public static final BSONExtractor<List<BSON>> BSON_LIST_EXTRACTOR = (obj, off) -> {
 
 		List<BSON> list = new ArrayList<>();
@@ -60,7 +58,8 @@ public class BSONValueExtractors {
 			} else if (obj.bs[off] == BSON.LONG || obj.bs[off] == BSON.DOUBLE) {
 				list.add(new BSON(obj.bs, off, 9));
 				off += 9;
-			} else if (obj.bs[off] >= 5 && obj.bs[off] <= 7) {
+			} else if (obj.bs[off] == BSON.NULL || obj.bs[off] == BSON.BOOLEAN_FALSE
+					|| obj.bs[off] == BSON.BOOLEAN_TRUE) {
 				list.add(new BSON(obj.bs, off, 1));
 				off += 1;
 			} else {
@@ -72,6 +71,8 @@ public class BSONValueExtractors {
 
 		return list;
 	};
+	
+	public static final BSONExtractor<BSON> BSON_OBJECT_EXTRACTOR = (obj, off) -> obj;
 
 	private BSONValueExtractors() {
 	}
