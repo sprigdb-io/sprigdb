@@ -9,9 +9,9 @@
 		<artifactId>sprig-project</artifactId>
 		<version>0.1</version>
 	</parent>
-	<artifactId>sprigdb</artifactId>
-	<name>sprigdb</name>
-    <description>Sprigdb main application to start the DB.</description>
+	<artifactId>storage-v1</artifactId>
+	<name>storage-v1</name>
+    <description>Sprigdb storage engine version 1.</description>
 	<packaging>jar</packaging>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

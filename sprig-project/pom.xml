@@ -5,28 +5,21 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>io.sprigdb</groupId>
-	<artifactId>sprigdb-project</artifactId>
+	<artifactId>sprig-project</artifactId>
 	<version>0.1</version>
 	<packaging>pom</packaging>
-	<name>sprigdb-project</name>
-	<description>This is the parent project to contain all the modules of the sprig db project</description>
+	<name>sprig-project</name>
 	<url>http://sprigdb.io</url>
-
+    <description>Parent project for all sprig db projects.</description>
 	<modules>
 		<module>sprigdb</module>
+        <module>storage-v1</module>
+        <module>btree-v1</module>
+        <module>commons</module>
 	</modules>
 
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.2</version>
-				<configuration> <!-- Compile java 7 compatible bytecode -->
-					<source>1.8</source>
-					<target>1.8</target>
-				</configuration>
-			</plugin>
-		</plugins>
-	</build>
+	<properties>
+		<maven.compiler.target>1.10</maven.compiler.target>
+		<maven.compiler.source>1.10</maven.compiler.source>
+	</properties>
 </project>

@@ -9,9 +9,9 @@
 		<artifactId>sprig-project</artifactId>
 		<version>0.1</version>
 	</parent>
-	<artifactId>sprigdb</artifactId>
-	<name>sprigdb</name>
-    <description>Sprigdb main application to start the DB.</description>
+	<artifactId>btree-v1</artifactId>
+	<name>btree-v1</name>
+	<description>Implementation of B-Tree version 1 for the storage engine.</description>
 	<packaging>jar</packaging>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -30,9 +30,15 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>com.google.inject</groupId>
-			<artifactId>guice</artifactId>
-			<version>4.2.3</version>
+			<groupId>io.sprigdb</groupId>
+			<artifactId>commons</artifactId>
+			<version>0.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<version>1.18.12</version>
+			<scope>provided</scope>
 		</dependency>
 	</dependencies>
 	<build>
