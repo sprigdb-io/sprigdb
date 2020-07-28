@@ -8,17 +8,19 @@ import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 
-import io.sprigdb.commons.util.Arrays;
+import io.sprigdb.commons.util.ArraysUtil;
 
 class BSONParserTest {
+
+	KeySubstitutor substitutor = new DefaultKeySubstitutor();
 
 	@Test
 	void testParseObject() {
 
 		Map<String, Object> map = Map.of("int", (Object) 32, "float", (Object) 45f, "h", (Object) "hello string");
-		byte[] mapBytes = map.entrySet().stream()
-				.map(e -> Arrays.concat(BSONParser.getBytes(e.getKey()), BSONParser.getRawBytes((Object) e.getValue())))
-				.reduce(Arrays::concat).orElse(null);
+		byte[] mapBytes = map.entrySet().stream().map(
+				e -> ArraysUtil.concat(BSONParser.getBytes(e.getKey()), BSONParser.getRawBytes(substitutor, (Object) e.getValue())))
+				.reduce(ArraysUtil::concat).orElse(null);
 		byte[] finBytes = new byte[5];
 		int length = mapBytes.length;
 		finBytes[0] = BSON.OBJECT;
@@ -26,16 +28,16 @@ class BSONParserTest {
 		finBytes[2] = (byte) ((0xff00 & length) >>> 8);
 		finBytes[3] = (byte) ((0xff0000 & length) >>> 16);
 		finBytes[4] = (byte) ((0xff000000 & length) >>> 24);
-		assertArrayEquals(Arrays.concat(finBytes, mapBytes), BSONParser.getBytes(map));
-		assertArrayEquals(BSONParser.getBytes(), BSONParser.getBytes((Map<String, Object>) null));
-		assertArrayEquals(BSONParser.getBytes(), BSONParser.getBytes((List<String>) null));
-		assertArrayEquals(BSONParser.getBytes(), BSONParser.getBytes((Object[]) null));
+		assertArrayEquals(ArraysUtil.concat(finBytes, mapBytes), BSONParser.getBytes(substitutor, map));
+		assertArrayEquals(BSONParser.getBytes(), BSONParser.getBytes(substitutor, (Map<String, Object>) null));
+		assertArrayEquals(BSONParser.getBytes(), BSONParser.getBytes(substitutor, (List<String>) null));
+		assertArrayEquals(BSONParser.getBytes(), BSONParser.getBytes(substitutor, (Object[]) null));
 	}
 
 	@Test
 	void testGetBytesTArray() {
 		Object[] arr = new Object[] { 10, 20l, 40f, 55d, true, false, Boolean.TRUE, Boolean.FALSE, "hello" };
-		byte[] colBytes = Stream.of(arr).map(BSONParser::getRawBytes).reduce(Arrays::concat).orElse(null);
+		byte[] colBytes = Stream.of(arr).map(e -> BSONParser.getRawBytes(substitutor, e)).reduce(ArraysUtil::concat).orElse(null);
 		byte[] finBytes = new byte[5];
 		int length = colBytes.length;
 		finBytes[0] = BSON.ARRAY;
@@ -43,14 +45,15 @@ class BSONParserTest {
 		finBytes[2] = (byte) ((0xff00 & length) >>> 8);
 		finBytes[3] = (byte) ((0xff0000 & length) >>> 16);
 		finBytes[4] = (byte) ((0xff000000 & length) >>> 24);
-		assertArrayEquals(Arrays.concat(finBytes, colBytes), BSONParser.getBytes(arr));
-		assertArrayEquals(new byte[] { BSON.ARRAY, 0, 0, 0, 0 }, BSONParser.getBytes(new Byte[0]));
+		assertArrayEquals(ArraysUtil.concat(finBytes, colBytes), BSONParser.getBytes(substitutor, arr));
+		assertArrayEquals(new byte[] { BSON.ARRAY, 0, 0, 0, 0 }, BSONParser.getBytes(substitutor, new Byte[0]));
 	}
 
 	@Test
 	void testGetBytesCollectionOfT() {
 		List<Object> list = List.of("int", (Object) 32, "float", (Object) 45f, "h", (Object) "hello string");
-		byte[] colBytes = list.stream().map(BSONParser::getRawBytes).reduce(Arrays::concat).orElse(null);
+		byte[] colBytes = list.stream().map(e -> BSONParser.getRawBytes(substitutor, e)).reduce(ArraysUtil::concat)
+				.orElse(null);
 		byte[] finBytes = new byte[5];
 		int length = colBytes.length;
 		finBytes[0] = BSON.ARRAY;
@@ -58,25 +61,26 @@ class BSONParserTest {
 		finBytes[2] = (byte) ((0xff00 & length) >>> 8);
 		finBytes[3] = (byte) ((0xff0000 & length) >>> 16);
 		finBytes[4] = (byte) ((0xff000000 & length) >>> 24);
-		assertArrayEquals(Arrays.concat(finBytes, colBytes), BSONParser.getBytes(list));
+		assertArrayEquals(ArraysUtil.concat(finBytes, colBytes), BSONParser.getBytes(substitutor, list));
 	}
 
 	@Test
 	void testGetRawBytes() {
-		assertArrayEquals(BSONParser.getBytes(), BSONParser.getRawBytes(null));
-		assertArrayEquals(BSONParser.getBytes(23), BSONParser.getRawBytes(23));
-		assertArrayEquals(BSONParser.getBytes(23l), BSONParser.getRawBytes(23l));
-		assertArrayEquals(BSONParser.getBytes(23f), BSONParser.getRawBytes(23f));
-		assertArrayEquals(BSONParser.getBytes(23d), BSONParser.getRawBytes(23d));
-		assertArrayEquals(BSONParser.getBytes(true), BSONParser.getRawBytes(true));
-		assertArrayEquals(BSONParser.getBytes(false), BSONParser.getRawBytes(false));
-		assertArrayEquals(BSONParser.getBytes("Hello"), BSONParser.getRawBytes("Hello"));
-		assertArrayEquals(BSONParser.getBytes(new Object[] { 10, 20l, 40f, 55d, true, false, "hello" }),
-				BSONParser.getRawBytes(new Object[] { 10, 20l, 40f, 55d, true, false, "hello" }));
-		assertArrayEquals(BSONParser.getBytes(List.of(10, 20l, 40f, 55d, true, false, "hello")),
-				BSONParser.getRawBytes(List.of(10, 20l, 40f, 55d, true, false, "hello")));
+
+		assertArrayEquals(BSONParser.getBytes(), BSONParser.getRawBytes(substitutor, null));
+		assertArrayEquals(BSONParser.getBytes(23), BSONParser.getRawBytes(substitutor, 23));
+		assertArrayEquals(BSONParser.getBytes(23l), BSONParser.getRawBytes(substitutor, 23l));
+		assertArrayEquals(BSONParser.getBytes(23f), BSONParser.getRawBytes(substitutor, 23f));
+		assertArrayEquals(BSONParser.getBytes(23d), BSONParser.getRawBytes(substitutor, 23d));
+		assertArrayEquals(BSONParser.getBytes(true), BSONParser.getRawBytes(substitutor, true));
+		assertArrayEquals(BSONParser.getBytes(false), BSONParser.getRawBytes(substitutor, false));
+		assertArrayEquals(BSONParser.getBytes("Hello"), BSONParser.getRawBytes(substitutor, "Hello"));
+		assertArrayEquals(BSONParser.getBytes(substitutor, new Object[] { 10, 20l, 40f, 55d, true, false, "hello" }),
+				BSONParser.getRawBytes(substitutor, new Object[] { 10, 20l, 40f, 55d, true, false, "hello" }));
+		assertArrayEquals(BSONParser.getBytes(substitutor, List.of(10, 20l, 40f, 55d, true, false, "hello")),
+				BSONParser.getRawBytes(substitutor, List.of(10, 20l, 40f, 55d, true, false, "hello")));
 		Map<String, Object> map = Map.of("int", (Object) 32, "float", (Object) 45f, "h", (Object) "hello string");
-		assertArrayEquals(BSONParser.getBytes(map), BSONParser.getRawBytes(map));
+		assertArrayEquals(BSONParser.getBytes(substitutor, map), BSONParser.getRawBytes(substitutor, map));
 	}
 
 	@Test

@@ -1,6 +1,6 @@
 package io.sprigdb.commons.util;
 
-public class Arrays {
+public class ArraysUtil {
 
 	public static byte[] concat(byte[] a1, byte[] a2) {
 
@@ -12,6 +12,6 @@ public class Arrays {
 		return a;
 	}
 
-	private Arrays() {
+	private ArraysUtil() {
 	}
 }

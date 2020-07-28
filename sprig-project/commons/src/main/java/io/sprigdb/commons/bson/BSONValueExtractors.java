@@ -1,9 +1,21 @@
 package io.sprigdb.commons.bson;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
 public class BSONValueExtractors {
+
+	public static final BSONExtractor<Byte> BYTE_EXTRACTOR = (obj, off) -> (byte) (0xff & obj.bs[off + 1]);
+
+	public static final BSONExtractor<Short> SHORT_EXTRACTOR = (obj, off) -> {
+
+		short s = (short) (0xff & obj.bs[off + 2]);
+		s <<= 8;
+		s |= (short) (0xff & obj.bs[off + 1]);
+		return s;
+	};
 
 	public static final BSONExtractor<Integer> INTEGER_EXTRACTOR = (obj, off) -> {
 
@@ -27,8 +39,14 @@ public class BSONValueExtractors {
 		return l;
 	};
 
+	public static final BSONExtractor<BigInteger> BIG_INTEGER_EXTRACTOR = (obj, off) -> new BigInteger(obj.bs, off + 5,
+			(INTEGER_EXTRACTOR.getValue(obj, off)));
+
 	public static final BSONExtractor<String> STRING_EXTRACTOR = (obj, off) -> new String(obj.bs, off + 5,
 			(INTEGER_EXTRACTOR.getValue(obj, off)));
+
+	public static final BSONExtractor<BigDecimal> BIG_DECIMAL_EXTRACTOR = (obj,
+			off) -> new BigDecimal(STRING_EXTRACTOR.getValue(obj, off));
 
 	public static final BSONExtractor<Float> FLOAT_EXTRACTOR = (obj, off) -> Float
 			.intBitsToFloat(INTEGER_EXTRACTOR.getValue(obj, off));
@@ -52,26 +70,28 @@ public class BSONValueExtractors {
 		int length;
 		while (off < limit) {
 
-			if (obj.bs[off] == BSON.INTEGER || obj.bs[off] == BSON.FLOAT) {
-				list.add(new BSON(obj.bs, off, 5));
-				off += 5;
+			if (obj.bs[off] == BSON.BYTE) {
+				length = 2;
+			} else if (obj.bs[off] == BSON.SHORT) {
+				length = 3;
+			} else if (obj.bs[off] == BSON.INTEGER || obj.bs[off] == BSON.FLOAT) {
+				length = 5;
 			} else if (obj.bs[off] == BSON.LONG || obj.bs[off] == BSON.DOUBLE) {
-				list.add(new BSON(obj.bs, off, 9));
-				off += 9;
+				length = 9;
 			} else if (obj.bs[off] == BSON.NULL || obj.bs[off] == BSON.BOOLEAN_FALSE
 					|| obj.bs[off] == BSON.BOOLEAN_TRUE) {
-				list.add(new BSON(obj.bs, off, 1));
-				off += 1;
+				length = 1;
 			} else {
 				length = 5 + INTEGER_EXTRACTOR.getValue(obj, off);
-				list.add(new BSON(obj.bs, off, length));
-				off += length;
 			}
+
+			list.add(new BSON(obj.bs, off, length));
+			off += length;
 		}
 
 		return list;
 	};
-	
+
 	public static final BSONExtractor<BSON> BSON_OBJECT_EXTRACTOR = (obj, off) -> obj;
 
 	private BSONValueExtractors() {
