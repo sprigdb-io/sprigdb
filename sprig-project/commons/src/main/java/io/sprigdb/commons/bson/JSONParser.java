@@ -70,7 +70,9 @@ public class JSONParser {
 			if (c[i] == 't' || c[i] == 'f') {
 
 				if (currentType == Marker.BEGIN || currentType == Marker.OBJECT_VALUE_START
-						|| currentType == Marker.ARRAY) {
+						|| currentType == Marker.ARRAY || currentType == Marker.ARRAY_VALUE_STARTED) {
+					if (currentType == Marker.ARRAY)
+						markers.add(new Marker(i, Marker.ARRAY_VALUE_STARTED));
 					markers.add(new Marker(i, Marker.BOOLEAN));
 				} else if (currentType != Marker.STRING) {
 					throw new JSONParseException(errorString(c[i], i));
@@ -78,7 +80,9 @@ public class JSONParser {
 			} else if (c[i] == 'n') {
 
 				if (currentType == Marker.BEGIN || currentType == Marker.OBJECT_VALUE_START
-						|| currentType == Marker.ARRAY) {
+						|| currentType == Marker.ARRAY || currentType == Marker.ARRAY_VALUE_STARTED) {
+					if (currentType == Marker.ARRAY)
+						markers.add(new Marker(i, Marker.ARRAY_VALUE_STARTED));
 					markers.add(new Marker(i, Marker.NULL));
 				} else if (currentType != Marker.STRING) {
 					throw new JSONParseException(errorString(c[i], i));
@@ -86,8 +90,10 @@ public class JSONParser {
 			} else if ((c[i] >= '0' && c[i] <= '9') || c[i] == '-' || c[i] == '+') {
 
 				if (currentType == Marker.BEGIN || currentType == Marker.OBJECT_KEY_START
-						|| currentType == Marker.OBJECT_VALUE_START || currentType == Marker.ARRAY) {
-
+						|| currentType == Marker.OBJECT_VALUE_START || currentType == Marker.ARRAY
+						|| currentType == Marker.ARRAY_VALUE_STARTED) {
+					if (currentType == Marker.ARRAY)
+						markers.add(new Marker(i, Marker.ARRAY_VALUE_STARTED));
 					markers.add(new Marker(i, Marker.NUMBER));
 				} else if (currentType != Marker.STRING && currentType != Marker.NUMBER
 						&& currentType != Marker.REAL_NUMBER) {
@@ -96,8 +102,10 @@ public class JSONParser {
 			} else if (c[i] == '"') {
 
 				if (currentType == Marker.BEGIN || currentType == Marker.OBJECT_KEY_START
-						|| currentType == Marker.OBJECT_VALUE_START || currentType == Marker.ARRAY) {
-
+						|| currentType == Marker.OBJECT_VALUE_START || currentType == Marker.ARRAY
+						|| currentType == Marker.ARRAY_VALUE_STARTED) {
+					if (currentType == Marker.ARRAY)
+						markers.add(new Marker(i, Marker.ARRAY_VALUE_STARTED));
 					markers.add(new Marker(i, Marker.STRING));
 				} else if (currentType == Marker.STRING) {
 
@@ -119,8 +127,9 @@ public class JSONParser {
 					} else if (lastType == Marker.OBJECT_KEY_START) {
 						lastB = this.keysub.getBSONFromKey(value);
 						markers.add(new Marker(i, Marker.OBJECT_KEY_END));
-					} else if (lastType == Marker.ARRAY) {
-						listList.peekLast().add(this.bsonParser.parseObject(value));
+					} else if (lastType == Marker.ARRAY_VALUE_STARTED) {
+						lastB = this.bsonParser.parseObject(value);
+						listList.peekLast().add(lastB);
 					}
 				}
 			} else if (c[i] == ',') {
@@ -129,15 +138,22 @@ public class JSONParser {
 						|| currentType == Marker.REAL_NUMBER) {
 					BSON v = getValue(markers.pollLast(), i, c);
 					byte lastType = markers.peekLast().getType();
-					if (lastType == Marker.ARRAY) {
+					if (lastType == Marker.ARRAY_VALUE_STARTED) {
 						listList.peekLast().add(v);
 					} else if (lastType == Marker.OBJECT_VALUE_START) {
 						mapList.peekLast().put(lastB, v);
 						markers.pollLast();
 					}
-				} else if (currentType != Marker.STRING && (currentType != Marker.OBJECT_KEY_START && currentType != Marker.ARRAY)) {
-					
+					lastB = null;
+				} else if (currentType == Marker.BEGIN
+						|| ((currentType == Marker.ARRAY_VALUE_STARTED || currentType == Marker.ARRAY)
+								&& listList.peekLast().isEmpty())
+						|| (currentType == Marker.OBJECT_KEY_START && mapList.peekLast().isEmpty())) {
 					throw new JSONParseException(errorString(c[i], i));
+				} else if (lastB == null && currentType == Marker.ARRAY_VALUE_STARTED) {
+					throw new JSONParseException(errorString(c[i], i));
+				} else {
+					lastB = null;
 				}
 			} else if (c[i] == '{') {
 
@@ -148,6 +164,8 @@ public class JSONParser {
 						lastB = null;
 					}
 					markers.add(new Marker(i, Marker.OBJECT_KEY_START));
+				} else if (currentType == Marker.ARRAY) {
+					markers.add(new Marker(i, Marker.ARRAY_VALUE_STARTED));
 				} else if (currentType != Marker.STRING) {
 					throw new JSONParseException(errorString(c[i], i));
 				}
@@ -176,12 +194,14 @@ public class JSONParser {
 			} else if (c[i] == '[') {
 
 				if (currentType == Marker.BEGIN || currentType == Marker.OBJECT_VALUE_START
-						|| currentType == Marker.ARRAY) {
-					markers.add(new Marker(i, Marker.ARRAY));
-					listList.add(new LinkedList<>());
+						|| currentType == Marker.ARRAY || currentType == Marker.ARRAY_VALUE_STARTED) {
 					if (currentType == Marker.OBJECT_VALUE_START) {
 						lastBList.add(lastB);
+					} else if (currentType == Marker.ARRAY) {
+						markers.add(new Marker(i, Marker.ARRAY_VALUE_STARTED));
 					}
+					markers.add(new Marker(i, Marker.ARRAY));
+					listList.add(new LinkedList<>());
 					lastB = null;
 				} else if (currentType != Marker.STRING) {
 					throw new JSONParseException(errorString(c[i], i));
@@ -198,9 +218,10 @@ public class JSONParser {
 					listList.peekLast().add(lastB);
 					currentType = markers.peekLast().getType();
 				}
-				if (currentType == Marker.ARRAY) {
-
+				if (currentType == Marker.ARRAY_VALUE_STARTED || currentType == Marker.ARRAY) {
 					lastB = makeBSON(listList.pollLast());
+					if (currentType == Marker.ARRAY_VALUE_STARTED)
+						markers.pollLast(); // removes the array started
 					markers.pollLast();
 					currentType = markers.peekLast().getType();
 				}
@@ -208,7 +229,7 @@ public class JSONParser {
 
 					mapList.getLast().put(lastBList.pollLast(), lastB);
 					markers.pollLast();
-				} else if (currentType == Marker.ARRAY) {
+				} else if (currentType == Marker.ARRAY || currentType == Marker.ARRAY_VALUE_STARTED) {
 					listList.getLast().add(lastB);
 				}
 			} else if (c[i] == ':') {
@@ -378,7 +399,9 @@ public class JSONParser {
 		public static final byte OBJECT_KEY_END = 7;
 		public static final byte OBJECT_VALUE_START = 8;
 		public static final byte ARRAY = 9;
-		public static final byte REAL_NUMBER = 10;
+		public static final byte ARRAY_VALUE_STARTED = 10;
+		public static final byte ARRAY_VALUE_ENDED = 11;
+		public static final byte REAL_NUMBER = 12;
 
 		private int start;
 		private byte type;

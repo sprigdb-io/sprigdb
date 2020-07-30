@@ -227,12 +227,11 @@ class BSONTest {
 
 		String string = bsonParser.parseObject(map).toJSONString();
 		BSON bsonMap = new JSONParser().parseJSONString(string);
-		
-		Map<String, Object> outMap = bsonMap
-				.getAsMap(new DefaultKeySubstitutor());
+
+		Map<String, Object> outMap = bsonMap.getAsMap(new DefaultKeySubstitutor());
 		assertEquals(map.get("hiout"), outMap.get("hiout"));
 		assertEquals(map.get("helloout"), outMap.get("helloout"));
-		
+
 		Map<String, Object> outMap2 = (Map<String, Object>) outMap.get("another");
 		assertEquals(map2.get("hi"), outMap2.get("hi"));
 	}
