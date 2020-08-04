@@ -52,9 +52,9 @@ class JSONParserTest {
 		assertEquals("asdf", (String) list.get(0).getValue());
 		assertEquals((byte) 4, (byte) list.get(1).getValue());
 		assertEquals((byte) 5, (byte) list.get(2).getValue());
-//		b = jsonParser.parseJSONString("[\"\",\n224\n]");
-//		list = b.getValue();
-//		assertEquals("", (String) list.get(0).getValue());
-//		assertEquals((short) 224, (short) list.get(1).getValue());
+		b = jsonParser.parseJSONString("[\"\",\n224\n]");
+		list = b.getValue();
+		assertEquals("", (String) list.get(0).getValue());
+		assertEquals((short) 224, (short) list.get(1).getValue());
 	}
 }

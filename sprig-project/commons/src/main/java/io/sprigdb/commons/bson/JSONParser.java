@@ -3,7 +3,9 @@ package io.sprigdb.commons.bson;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Set;
 
 import io.sprigdb.commons.exceptions.JSONParseException;
 import io.sprigdb.commons.util.StringUtil;
@@ -12,11 +14,14 @@ import lombok.Data;
 
 public class JSONParser {
 
+	private static final String AT_POSITION = "' at position : ";
+
 	private static final BigInteger LONG_MAX = BigInteger.valueOf(Long.MAX_VALUE);
 	private static final BigInteger LONG_MIN = BigInteger.valueOf(Long.MIN_VALUE);
 
-	private static final BigDecimal DOUBLE_MAX = BigDecimal.valueOf(Double.MAX_VALUE);
-	private static final BigDecimal DOUBLE_MIN = BigDecimal.valueOf(Double.MIN_VALUE);
+	private static final byte MARKER_NONE = -1;
+	private static final byte MARKER_OBJECT = 1;
+	private static final byte MARKER_ARRAY = 2;
 
 	private KeySubstitutor keysub;
 	private BSONParser bsonParser;
@@ -53,361 +58,454 @@ public class JSONParser {
 
 	public BSON parseJSONString(char[] c, int off, int length) {
 
-		LinkedList<Marker> markers = new LinkedList<>();
+		LinkedList<Byte> containerMarkers = new LinkedList<>();
 		LinkedList<DataObject> values = new LinkedList<>();
 
-		int i = 0;
-		byte currentType;
-		markers.push(new Marker(Marker.BEGIN, off));
+		int i = off;
+		byte currentContainer = MARKER_NONE;
 		int totalLength = off + length;
-		int loopCounter = 0;
 
 		while (i < totalLength) {
 
-			currentType = markers.peek().getType();
+			switch (c[i]) {
 
-			switch (currentType) {
+			case 't':
+			case 'f':
+				i = processBoolean(c, i, totalLength, currentContainer, values);
+				break;
 
-			case Marker.ARRAY:
-			case Marker.OBJECT_VALUE_START:
-			case Marker.OBJECT_KEY_START:
-			case Marker.BEGIN:
-				i = processBegin(c, i, markers, values);
+			case 'n':
+				i = processNull(c, i, totalLength, currentContainer, values);
 				break;
-			case Marker.NUMBER:
-				i = processNumber(c, i, markers, values);
+
+			case '0':
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+			case '-':
+			case '+':
+				i = processNumber(c, i, totalLength, currentContainer, values);
 				break;
-			case Marker.BOOLEAN:
-				i = processBoolean(c, i, markers, values);
+
+			case '"':
+				i = processString(c, i, totalLength, currentContainer, values);
 				break;
-			case Marker.NULL:
-				i = processNull(c, i, markers, values);
+			case '{':
+				currentContainer = MARKER_OBJECT;
+				containerMarkers.push(currentContainer);
+				values.push(new DataObject());
+				i = processObjectStart(c, i, totalLength);
 				break;
-			case Marker.STRING:
-				i = processString(c, i, markers, values);
+			case '}':
+				if (currentContainer != MARKER_OBJECT) {
+					throw new JSONParseException("'}' found without object start '{'");
+				}
+				containerMarkers.pop();
+				if (!containerMarkers.isEmpty())
+					currentContainer = containerMarkers.peek();
+				else
+					currentContainer = MARKER_NONE;
+				i = processObjectEnd(c, i, totalLength, currentContainer, values);
 				break;
-			case Marker.OBJECT:
-				i = processObject(c, i, markers);
+			case '[':
+				currentContainer = MARKER_ARRAY;
+				containerMarkers.push(currentContainer);
+				values.push(new DataObject());
+				i = checkForValue(c, i, totalLength);
 				break;
-			case Marker.OBJECT_KEY_END:
-				i = processObjectKeyEnd(c, i, markers);
-				break;
-			case Marker.OBJECT_VALUE_END:
-				i = processObjectValueEnd(c, i, markers, values);
-				break;
-			case Marker.ARRAY_END:
-				i = processArrayEnd(i, markers, values);
+			case ']':
+				if (currentContainer != MARKER_ARRAY) {
+					throw new JSONParseException("']' found without array start '['");
+				}
+				containerMarkers.pop();
+				if (!containerMarkers.isEmpty())
+					currentContainer = containerMarkers.peek();
+				else
+					currentContainer = MARKER_NONE;
+				i = processArrayEnd(c, i, totalLength, currentContainer, values);
 				break;
 			default:
-				i++;
-			}
-
-			loopCounter++;
-			if (loopCounter > length * 2) {
-
-				throw new JSONParseException(errorString(c[i], i, null));
+				if ((c[i] == '\t' || c[i] == '\n' || c[i] == ' ') || c[i] == 65279)
+					i++;
+				else
+					throw new JSONParseException("Unknown symbol '" + c[i] + AT_POSITION + (i + 1));
 			}
 		}
 
-		if (markers.peek().getType() != Marker.BEGIN) {
-
-			throw new JSONParseException("Illformed JSON");
+		if (!containerMarkers.isEmpty()) {
+			throw new JSONParseException(
+					(containerMarkers.peek() == MARKER_ARRAY ? "Array" : "Object") + " is not closed in the end");
 		}
-
 		return values.pop().getBson();
 	}
 
-	private int processArrayEnd(int i, LinkedList<Marker> markers, LinkedList<DataObject> values) {
+	private int processObjectStart(char[] c, int i, int totalLength) {
 
-		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		int p = i + 1;
+		while (p < totalLength && (c[p] == '\t' || c[p] == '\n' || c[p] == ' ') && c[p] != '"' && c[p] != '}') {
+			++p;
+		}
+
+		if (p == totalLength || !(c[p] == '"' || c[p] == '}'))
+			throw new JSONParseException("Expected a String at position : " + (p + 1));
+		return i + 1;
+	}
+
+	private int processArrayEnd(char[] c, int i, int totalLength, byte previousContainer,
+			LinkedList<DataObject> values) {
+
 		LinkedList<BSON> list = new LinkedList<>();
 		while (values.peek().getType() != DataObject.BREAK) {
 			list.addFirst(values.pop().getBson());
 		}
 		values.pop();
 
-		markers.pop();
-		if (markers.peek().getType() != Marker.ARRAY) {
-			throw new JSONParseException("Unable to parse an Array.");
-		}
-		markers.pop();
-
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
 		for (BSON v : list) {
 			bos.write(v.bs, v.offset, v.length);
 		}
+
 		byte[] size = BSONParser.getBytes(bos.size());
 		byte[] b = new byte[bos.size() + 5];
 		b[0] = BSON.ARRAY;
 		System.arraycopy(size, 1, b, 1, 4);
 		System.arraycopy(bos.toByteArray(), 0, b, 5, bos.size());
 
-		boolean vs = markers.peek().getType() == Marker.OBJECT_VALUE_START;
-		if (vs)
-			markers.pop();
-		values.push(new DataObject(DataObject.VALUE, new BSON(b)));
-		if (vs)
-			markers.push(new Marker(Marker.OBJECT_VALUE_END, i + 1));
+		push(values, new DataObject(DataObject.VALUE, new BSON(b)));
 
-		return i + 1;
+		return checkForValue(c, i, totalLength, previousContainer);
 	}
 
-	private int processObject(char[] c, int i, LinkedList<Marker> markers) {
+	private int processObjectEnd(char[] c, int i, int totalLength, byte previousContainer,
+			LinkedList<DataObject> values) {
 
-		int p = i;
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		DataObject m = values.pop();
+		DataObject k;
+		Set<BSON> set = new HashSet<>();
+		while (m.getType() != DataObject.BREAK) {
 
-		while (p < c.length && c[p] != '"') {
-
-			if (c[p] > ' ')
-				throw new JSONParseException("Unknown symbol found when expecting a '\"' at position : " + p);
-			p++;
-		}
-		if (c[p] != '"') {
-			throw new JSONParseException("Unknown symbol found when expecting a '\"' at position : " + p);
-		}
-		markers.push(new Marker(Marker.OBJECT_KEY_START, p + 1));
-		markers.push(new Marker(Marker.STRING, p + 1));
-
-		return p + 1;
-	}
-
-	private int processObjectKeyEnd(char[] c, int i, LinkedList<Marker> markers) {
-
-		int p = i;
-		while (p < c.length && (c[p] != ':')) {
-			p++;
-		}
-		if (p == c.length)
-			throw new JSONParseException("Unable to find the key value seperated ':'");
-		markers.pop();
-		markers.push(new Marker(Marker.OBJECT_VALUE_START, p + 1));
-
-		return p + 1;
-	}
-
-	private int processObjectValueEnd(char[] c, int i, LinkedList<Marker> markers, LinkedList<DataObject> values) {
-
-		int p = i;
-		while (p < c.length && c[p] != ',' && c[p] != '}') {
-			p++;
-		}
-		if (p == c.length)
-			throw new JSONParseException("Unable to find Object ending");
-		markers.pop();
-		if (c[p] == ',')
-			markers.push(new Marker(Marker.OBJECT_KEY_START, p + 1));
-		else {
-
-			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-			DataObject m = values.pop();
-			DataObject k;
-			while (m.getType() != DataObject.BREAK) {
-
-				k = values.pop();
-				bos.write(k.bson.bs, k.bson.offset, k.bson.length);
-				bos.write(m.bson.bs, m.bson.offset, m.bson.length);
-				m = values.pop();
+			k = values.pop();
+			if (set.contains(k.bson)) {
+				if (!values.isEmpty())
+					m = values.pop();
+				continue;
 			}
-
-			byte[] size = BSONParser.getBytes(bos.size());
-			byte[] b = new byte[bos.size() + 5];
-			b[0] = BSON.OBJECT;
-			System.arraycopy(size, 1, b, 1, 4);
-			System.arraycopy(bos.toByteArray(), 0, b, 5, bos.size());
-
-			markers.pop();
-			values.push(new DataObject(DataObject.VALUE, new BSON(b)));
+			bos.write(k.bson.bs, k.bson.offset, k.bson.length);
+			bos.write(m.bson.bs, m.bson.offset, m.bson.length);
+			m = values.pop();
+			set.add(k.bson);
 		}
 
-		return p + 1;
+		byte[] size = BSONParser.getBytes(bos.size());
+		byte[] b = new byte[bos.size() + 5];
+		b[0] = BSON.OBJECT;
+		System.arraycopy(size, 1, b, 1, 4);
+		System.arraycopy(bos.toByteArray(), 0, b, 5, bos.size());
+
+		push(values, new DataObject(DataObject.VALUE, new BSON(b)));
+
+		return checkForValue(c, i, totalLength, previousContainer);
 	}
 
-	private int processString(char[] c, int i, LinkedList<Marker> markers, LinkedList<DataObject> values) {
+	private int processString(char[] c, int i, int totalLength, byte currentContainer, LinkedList<DataObject> values) {
 
-		int p = i;
+		int p = i + 1;
 
-		while (p < c.length && (c[p] != '"' && c[p - 1] != '\\')) {
+		while (p < totalLength) {
 
+			if (c[p] == '"' && c[p - 1] != '\\')
+				break;
 			if (c[p] == '\n') {
-				throw new JSONParseException("String cannot have line breaks at : " + i);
+				throw new JSONParseException("String cannot have line breaks at : " + (i + 1));
 			}
-			p++;
+			++p;
 		}
 
-		char[] cArray = new char[p - i];
-		System.arraycopy(c, i, cArray, 0, p - i);
-		String s = new String(StringUtil.trimInvisible(cArray));
+		if (p == totalLength && (currentContainer != MARKER_NONE || p == (i + 1))) {
+			throw new JSONParseException("String not terminated with '\"' at position : " + p);
+		}
 
-		markers.pop();
+		char[] cArray = new char[p - (i + 1)];
+		System.arraycopy(c, i + 1, cArray, 0, p - (i + 1));
+		String s = new String(cArray);
 
-		if (markers.peek().getType() == Marker.ARRAY) {
+		if (currentContainer == MARKER_NONE) {
+			push(values, new DataObject(DataObject.VALUE, this.bsonParser.parseObject(s)));
+			return p + 1;
+		} else if (currentContainer == MARKER_OBJECT) {
+			DataObject dob = values.peek();
+			boolean isKey = dob.type == DataObject.BREAK || ((dob.getIndex() & 1) == 1);
+			if (isKey)
+				push(values, new DataObject(DataObject.KEY, this.keysub.getBSONFromKey(s)));
+			else
+				push(values, new DataObject(DataObject.VALUE, this.bsonParser.parseObject(s)));
 
-			values.push(new DataObject(DataObject.VALUE, bsonParser.parseObject(s)));
-			if (p + 1 < c.length && c[p + 1] == ',')
-				return p + 2;
-		} else {
-			boolean isKeyOrValue = markers.peek().getType() == Marker.OBJECT_KEY_START
-					|| markers.peek().getType() == Marker.OBJECT_VALUE_START;
-
-			boolean isKey = markers.peek().getType() == Marker.OBJECT_KEY_START;
-
-			if (isKeyOrValue)
-				markers.pop();
+			++p;
 			if (isKey) {
-				values.push(new DataObject(DataObject.KEY, this.getKeySubstitutor().getBSONFromKey(s)));
-				markers.push(new Marker(Marker.OBJECT_KEY_END, p + 1));
+
+				while (p < totalLength && c[p] != ':' && (c[p] == '\t' || c[p] == '\n' || c[p] == ' ')) {
+					++p;
+				}
+
+				if (p < totalLength && c[p] == ':')
+					return p + 1;
+
+				throw new JSONParseException("Expected ':' at position : " + (p + 1));
 			} else {
-				values.push(new DataObject(DataObject.VALUE, bsonParser.parseObject(s)));
+
+				while (p < totalLength && c[p] != ',' && c[p] != '}' && (c[p] == '\t' || c[p] == '\n' || c[p] == ' ')) {
+					++p;
+				}
+
+				if (p < totalLength && c[p] == '}')
+					return p;
+
+				if (p < totalLength && c[p] == ',') {
+
+					int q = p + 1;
+					while (q < totalLength && c[q] != '"' && (c[q] == '\t' || c[q] == '\n' || c[q] == ' ')) {
+						q++;
+					}
+
+					if (q < totalLength && c[q] == '"')
+						return q;
+
+					throw new JSONParseException("Expecting a string at position : " + (p + 1));
+				} else {
+					throw new JSONParseException("Expecting a ',' or '}' at position : " + (p + 1));
+				}
+			}
+		} else {
+
+			push(values, new DataObject(DataObject.VALUE, this.bsonParser.parseObject(s)));
+			++p;
+			while (p < totalLength && c[p] != ',' && c[p] != ']' && (c[p] == '\t' || c[p] == '\n' || c[p] == ' ')) {
+				++p;
+			}
+
+			if (p == totalLength)
+				throw new JSONParseException("Array not terminated");
+
+			if (c[p] == ']')
+				return p;
+
+			if (c[p] == ',') {
+				return checkForValue(c, p, totalLength);
 			}
 		}
-		return p + 1;
+
+		throw new JSONParseException("Unknown symbol found after position : 1");
 	}
 
-	private int processNull(char[] c, int i, LinkedList<Marker> markers, LinkedList<DataObject> values) {
-
-		int v = c.length - i;
-		if (v < 4)
-			throw new JSONParseException("Expected a null value");
-
-		if (c[i + 1] == 'u' && c[i + 2] == 'l' && c[i + 3] == 'l') {
-			markers.pop();
-			boolean vs = markers.peek().getType() == Marker.OBJECT_VALUE_START;
-			if (vs)
-				markers.pop();
-			values.push(new DataObject(DataObject.VALUE, bsonParser.parseObject(null)));
-			if (vs)
-				markers.push(new Marker(Marker.OBJECT_VALUE_END, i + 4));
-
-			return i + 4;
-		}
-
-		throw new JSONParseException("Expected a null value");
-	}
-
-	private int processNumber(char[] c, int i, LinkedList<Marker> markers, LinkedList<DataObject> values) {
+	private int processNumber(char[] c, int i, int totalLength, byte currentContainer, LinkedList<DataObject> values) {
 
 		int p = i;
 		boolean isReal = false;
 		if (c[p] == '-' || c[p] == '+')
 			++p;
-		while (p < c.length && c[p] != ',' && c[p] != ']' && c[p] != '}') {
+		while (p < totalLength && c[p] != ',' && c[p] > ' ') {
 
-			if (!isReal && (c[p] == 'e' || c[p] == 'E' || c[p] == '.'))
+			if (c[p] == 'e' || c[p] == 'E') {
 				isReal = true;
-			else if (c[p] < '0' || c[p] > '9')
-				throw new JSONParseException("Unknown symbol while parsing number : '" + c[p] + "' at position : " + p);
-			p++;
+				if (c[p - 1] == '.') {
+					throw new JSONParseException("Exponent marker cannot be followed by '.' at position : " + (p + 1));
+				}
+			} else if (c[p] == '.') {
+				isReal = true;
+			} else if ((c[p] == ']' && currentContainer == MARKER_ARRAY)
+					|| (c[p] == '}' && currentContainer == MARKER_OBJECT)) {
+				break;
+			} else if ((c[p] < '0' || c[p] > '9') && c[p] != '-' && c[p] != '+') {
+				throw new JSONParseException("Unknown symbol while parsing number : '" + c[p] + AT_POSITION + (p + 1));
+			}
+			++p;
+		}
+
+		if (isReal && p < totalLength && c[p - 1] == '.') {
+			throw new JSONParseException("Number cannot be terminated with '.' at position : " + (p + 1));
 		}
 
 		char[] cArray = new char[p - i];
 		System.arraycopy(c, i, cArray, 0, p - i);
 		String s = new String(StringUtil.trimInvisible(cArray));
+		push(values, new DataObject(DataObject.VALUE, (isReal ? getRealNumberValue(s) : getNumberValue(s))));
 
-		markers.pop();
-		boolean vs = markers.peek().getType() == Marker.OBJECT_VALUE_START;
-		if (vs)
-			markers.pop();
-		values.push(new DataObject(DataObject.VALUE, (isReal ? getRealNumberValue(s) : getNumberValue(s))));
-		int index = p;
-		if (index + 1 < c.length && (c[index] == '}' || markers.peek().getType() == Marker.ARRAY))
-			++index;
-		if (vs)
-			markers.push(new Marker(Marker.OBJECT_VALUE_END, index));
-
-		return index;
+		return nextToken(c, p, totalLength, currentContainer);
 	}
 
-	private int processBoolean(char[] c, int i, LinkedList<Marker> markers, LinkedList<DataObject> values) {
+	private int processNull(char[] c, int i, int totalLength, byte currentContainer, LinkedList<DataObject> values) {
 
-		int v = c.length - i;
-		if (v < 4 || (c[i] == 'f' && v < 5))
-			throw new JSONParseException("Expected a boolean value " + (c[i] == 't' ? "true" : "false"));
+		if (i + 4 > totalLength)
+			throw new JSONParseException("Expected value 'null' at position : " + (i + 1));
 
-		Boolean value;
+		if (c[i + 1] == 'u' && c[i + 2] == 'l' && c[i + 3] == 'l') {
+			push(values, new DataObject(DataObject.VALUE, this.bsonParser.parseObject(null)));
+		} else {
+			throw new JSONParseException("Expected value 'null' at position : " + (i + 1));
+		}
+
+		return nextToken(c, i + 4, totalLength, currentContainer);
+	}
+
+	private int processBoolean(char[] c, int i, int totalLength, byte currentContainer, LinkedList<DataObject> values) {
+
+		int p = i + 4;
 		if (c[i] == 't') {
-			if (c[i + 1] == 'r' && c[i + 2] == 'u' && c[i + 3] == 'e') {
 
-				value = Boolean.TRUE;
+			if (i + 4 > totalLength)
+				throw new JSONParseException("Expected value 'true' at position : " + (i + 1));
+			if (c[i + 1] == 'r' && c[i + 2] == 'u' && c[i + 3] == 'e') {
+				push(values, new DataObject(DataObject.VALUE, this.bsonParser.parseObject(Boolean.TRUE)));
 			} else {
-				throw new JSONParseException("Expected a boolean value true");
+				throw new JSONParseException("Expected value 'true' at position : " + (i + 1));
 			}
 		} else {
+			if (i + 5 > totalLength)
+				throw new JSONParseException("Expected value 'false' at position : " + (i + 1));
 			if (c[i + 1] == 'a' && c[i + 2] == 'l' && c[i + 3] == 's' && c[i + 4] == 'e') {
-
-				value = Boolean.FALSE;
+				push(values, new DataObject(DataObject.VALUE, this.bsonParser.parseObject(Boolean.FALSE)));
 			} else {
-				throw new JSONParseException("Expected a boolean value true");
+				throw new JSONParseException("Expected value 'false' at position : " + (i + 1));
+			}
+			++p;
+		}
+
+		return nextToken(c, p, totalLength, currentContainer);
+	}
+
+	private void push(LinkedList<DataObject> values, DataObject dataObject) {
+
+		if (values.isEmpty()) {
+			dataObject.setIndex(0);
+		} else {
+			DataObject lastDataObject = values.peek();
+			if (lastDataObject.type == DataObject.BREAK)
+				dataObject.setIndex(0);
+			else
+				dataObject.setIndex(lastDataObject.getIndex() + 1);
+		}
+
+		values.push(dataObject);
+	}
+
+	private int nextToken(char[] c, int i, int totalLength, byte currentContainer) {
+
+		if (currentContainer == MARKER_NONE)
+			return i;
+
+		int p = i;
+
+		while (p < totalLength && c[p] != ',' && c[p] != '}' && c[p] != ']'
+				&& (c[p] == '\t' || c[p] == '\n' || c[p] == ' ')) {
+			++p;
+		}
+
+		if (p == totalLength)
+			throw new JSONParseException(
+					"Expected closing '" + (currentContainer == MARKER_ARRAY ? ']' : '}') + AT_POSITION + (i + 1));
+
+		if (c[p] == '}' || c[p] == ']')
+			return p;
+
+		if (c[p] == ',') {
+
+			return checkForValue(c, p, totalLength);
+		}
+
+		throw new JSONParseException(
+				"Expecting a ',' or '" + (currentContainer == MARKER_ARRAY ? ']' : '}') + AT_POSITION + (i + 1));
+	}
+
+	private int checkForValue(char[] c, int i, int totalLength, byte previousContainer) {
+
+		int p = i + 1;
+		while (p < totalLength && (c[p] == '\t' || c[p] == '\n' || c[p] == ' ')) {
+			++p;
+		}
+
+		if (previousContainer == -1)
+			return checkForValuePrevNothing(c, totalLength, p);
+		else
+			return checkForValuePrevObjectOrArray(c, totalLength, previousContainer, p);
+	}
+
+	private int checkForValuePrevObjectOrArray(char[] c, int totalLength, byte previousContainer, int p) {
+
+		if (p == totalLength)
+			throw new JSONParseException(
+					(previousContainer == MARKER_ARRAY ? "Array" : "Object") + " is not terminated.");
+
+		if (c[p] == ',')
+			return p + 1;
+
+		if (c[p] != ']' && previousContainer == MARKER_ARRAY)
+			throw new JSONParseException("Expecting ']' but found : '" + c[p] + AT_POSITION + (p + 1));
+
+		if (c[p] != '}' && previousContainer == MARKER_OBJECT)
+			throw new JSONParseException("Expecting '}' but found : '" + c[p] + AT_POSITION + (p + 1));
+
+		return p;
+	}
+
+	private int checkForValuePrevNothing(char[] c, int totalLength, int p) {
+		if (p == totalLength)
+			return p;
+		else
+			throw new JSONParseException("Unknown symbol '" + c[p] + AT_POSITION + (p + 1));
+	}
+
+	private int checkForValue(char[] c, int p, int totalLength) {
+
+		boolean startsWithComma = c[p] == ',';
+		int q = p + 1;
+		boolean found = false;
+		while (q < totalLength) {
+
+			if ((c[q] == '\t' || c[q] == '\n' || c[q] == ' ')) {
+				q++;
+			} else {
+
+				if (startsWithComma && c[q] == ']') {
+					throw new JSONParseException("No value found at position : " + (q + 1));
+				}
+
+				if (c[q] == 't' || c[q] == 'f' || c[q] == 'n' || c[q] == '{' || c[q] == '[' || c[q] == '\"'
+						|| c[q] == '+' || c[q] == '-' || c[q] == ']' || (c[q] >= '0' && c[q] <= '9')) {
+					found = true;
+				}
+				break;
 			}
 		}
 
-		markers.pop();
-		boolean vs = markers.peek().getType() == Marker.OBJECT_VALUE_START;
-		if (vs)
-			markers.pop();
-		values.push(new DataObject(DataObject.VALUE, bsonParser.parseObject(value)));
-		int index = i + (value.booleanValue() ? 4 : 5);
-		if (vs)
-			markers.push(new Marker(Marker.OBJECT_VALUE_END, index));
-		return index;
-	}
+		if (found)
+			return p + 1;
 
-	private int processBegin(char[] c, int i, LinkedList<Marker> markers, LinkedList<DataObject> values) {
-
-		if (c[i] <= ' ') {
-			return i + 1;
-		}
-
-		if ((c[i] >= '0' && c[i] <= '9') || c[i] == '-' || c[i] == '+') {
-			markers.push(new Marker(Marker.NUMBER, i));
-			return i;
-		}
-
-		switch (c[i]) {
-		case 't':
-		case 'f':
-			markers.push(new Marker(Marker.BOOLEAN, i));
-			return i;
-		case 'n':
-			markers.push(new Marker(Marker.NULL, i));
-			return i;
-		case '"':
-			markers.push(new Marker(Marker.STRING, i + 1));
-			return i + 1;
-		case '{':
-			values.push(new DataObject(DataObject.BREAK));
-			markers.push(new Marker(Marker.OBJECT, i + 1));
-			return i + 1;
-		case '[':
-			values.push(new DataObject(DataObject.BREAK));
-			markers.push(new Marker(Marker.ARRAY, i + 1));
-			return i + 1;
-		case ']':
-			markers.push(new Marker(Marker.ARRAY_END, i));
-			return i;
-		case ',':
-			throw new JSONParseException(errorString(c[i], i, "Value cannot start with"));
-		default:
-			throw new JSONParseException(errorString(c[i], i, null));
-		}
-	}
-
-	private String errorString(char c, int i, String message) {
-		return (message == null ? "Unable to parse near" : message) + " : '" + c + "' at position : " + (i + 1);
+		throw new JSONParseException("Unknown/No value found at position : " + (q + 1));
 	}
 
 	private BSON getRealNumberValue(String s) {
 		try {
 
-			BigDecimal bd = new BigDecimal(s);
-			if (bd.compareTo(DOUBLE_MAX) > 0 || bd.compareTo(DOUBLE_MIN) < 0)
-				return bsonParser.parseObject(bd);
+			float f = Float.parseFloat(s);
+			if (f != 0.0f && f != Float.POSITIVE_INFINITY && f != Float.NEGATIVE_INFINITY)
+				return this.bsonParser.parseObject(f);
 
-			Double d = bd.doubleValue();
-			float floatVal = d.floatValue();
-
-			if (Math.abs(((double) d.floatValue()) - d) < 0.00005)
-				return this.bsonParser.parseObject(floatVal);
-			else
+			Double d = Double.parseDouble(s);
+			if (d != 0.0d && d != Double.POSITIVE_INFINITY && d != Double.NEGATIVE_INFINITY)
 				return this.bsonParser.parseObject(d);
+
+			BigDecimal bd = new BigDecimal(s);
+			if (bd.equals(BigDecimal.valueOf(0.0d)))
+				return this.bsonParser.parseObject(0.0f);
+
+			return this.bsonParser.parseObject(bd);
 		} catch (Exception ex) {
 			throw new JSONParseException("Unable to parse to a number : '" + s + "'", ex);
 		}
@@ -444,34 +542,24 @@ public class JSONParser {
 
 		private byte type;
 		private BSON bson;
+		private int index = -1;
 
-		public DataObject(byte type) {
-			this(type, null);
+		public DataObject() {
+			this(BREAK, null, -1);
+		}
+
+		public DataObject(byte type, BSON bson) {
+			this(type, bson, -1);
+		}
+
+		public String toString() {
+			if (type == BREAK)
+				return "---------";
+
+			StringBuilder sb = new StringBuilder(type == KEY ? "KKKKKK" : "VVVVVV");
+			sb.append("(").append(index).append(")\n").append(bson.toString());
+
+			return sb.toString();
 		}
 	}
-
-	@AllArgsConstructor
-	@Data
-	protected static class Marker {
-
-		public static final byte BEGIN = 0;
-		public static final byte NUMBER = 1;
-		public static final byte STRING = 2;
-		public static final byte BOOLEAN = 3;
-		public static final byte NULL = 4;
-
-		public static final byte OBJECT = 5;
-		public static final byte OBJECT_KEY_START = 6;
-		public static final byte OBJECT_KEY_END = 7;
-		public static final byte OBJECT_VALUE_START = 8;
-		public static final byte OBJECT_VALUE_END = 9;
-
-		public static final byte ARRAY = 10;
-//		public static final byte ARRAY_VALUE_START = 11;
-		public static final byte ARRAY_END = 12;
-
-		private byte type;
-		private int start;
-	}
-
 }
