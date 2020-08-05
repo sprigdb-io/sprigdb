@@ -193,8 +193,7 @@ public class JSONParser {
 
 			k = values.pop();
 			if (set.contains(k.bson)) {
-				if (!values.isEmpty())
-					m = values.pop();
+				m = values.pop();
 				continue;
 			}
 			bos.write(k.bson.bs, k.bson.offset, k.bson.length);
@@ -550,16 +549,6 @@ public class JSONParser {
 
 		public DataObject(byte type, BSON bson) {
 			this(type, bson, -1);
-		}
-
-		public String toString() {
-			if (type == BREAK)
-				return "---------";
-
-			StringBuilder sb = new StringBuilder(type == KEY ? "KKKKKK" : "VVVVVV");
-			sb.append("(").append(index).append(")\n").append(bson.toString());
-
-			return sb.toString();
 		}
 	}
 }

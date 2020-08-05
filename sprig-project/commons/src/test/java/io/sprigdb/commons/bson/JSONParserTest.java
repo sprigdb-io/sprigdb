@@ -35,14 +35,14 @@ class JSONParserTest {
 		assertEquals((byte) 4, (byte) list.get(2).getValue());
 		assertEquals((byte) 5, (byte) list.get(3).getValue());
 
-		b = jsonParser.parseJSONString("{\"k1\" : -12, \"k2\": +34.4}");
+		b = jsonParser.parseJSONString("{\"k1\" : 	-12,\n 	\"k2\": +34.4}");
 		Map<BSON, BSON> map = b.getAsBSONMap();
 		assertEquals((byte) -12, (byte) map.get(bsonParser.parseObject("k1")).getValue());
 		assertEquals(34.4f, (float) map.get(bsonParser.parseObject("k2")).getValue());
 
 		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("[a]"));
 
-		b = jsonParser.parseJSONString("[\"asdf\",4,5]");
+		b = jsonParser.parseJSONString("[	\"asdf\",	4,5]");
 		list = b.getValue();
 		assertEquals("asdf", (String) list.get(0).getValue());
 		assertEquals((byte) 4, (byte) list.get(1).getValue());
@@ -56,5 +56,16 @@ class JSONParserTest {
 		list = b.getValue();
 		assertEquals("", (String) list.get(0).getValue());
 		assertEquals((short) 224, (short) list.get(1).getValue());
+
+		b = jsonParser.parseJSONString("0.0");
+		assertEquals(0.0f, (float) b.getValue());
+
+		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("[20, [234, 22, \"asdF\"    ] }"));
+		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("{ \"k\": 20, { \"a\" : 234 } ]"));
+		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("}"));
+		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("[123"));
+		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("[ 23, { \"k\" : 234 	\n"));
+		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("{ \"k\" 	\n : 234, \"l\":[\"adsf\"	 \n"));
+		assertThrows(JSONParseException.class, () -> jsonParser.parseJSONString("\""));
 	}
 }

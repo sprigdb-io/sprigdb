@@ -1,0 +1,91 @@
+{
+    "code": 0,
+    "rid": "0",
+    "data": {
+        "subid": "-7766883411351472375",
+        "data": {
+            "region": {
+                "123": {
+                    "alias": "Europe",
+                    "game": {
+                        "11811809": {
+                            "id": 11811809,
+                            "team1_name": "Zorya Luhansk",
+                            "team2_name": "SC Braga",
+                            "market": {
+                                "188597332": {
+                                    "type": "P1XP2",
+                                    "name": "Ganador del Partido",
+                                    "event": {
+                                        "624566458": {
+                                            "price": 2.39,
+                                            "name": "W1"
+                                        },
+                                        "624566459": {
+                                            "price": 3.01,
+                                            "name": "X"
+                                        },
+                                        "624566460": {
+                                            "price": 2.82,
+                                            "name": "W2"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "11811810": {
+                            "id": 11811810,
+                            "team1_name": "Olympiacos Piraeus",
+                            "team2_name": "FC Luzern",
+                            "market": {
+                                "188597340": {
+                                    "type": "P1XP2",
+                                    "name": "Ganador del Partido",
+                                    "event": {
+                                        "624566476": {
+                                            "price": 1.34,
+                                            "name": "W1"
+                                        },
+                                        "624566477": {
+                                            "price": 4.29,
+                                            "name": "X"
+                                        },
+                                        "624566478": {
+                                            "price": 7.92,
+                                            "name": "W2"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "11844220": {
+                            "id": 11844220,
+                            "team1_name": "NK Domzale",
+                            "team2_name": "FC Ufa",
+                            "market": {
+                                "189338624": {
+                                    "type": "P1XP2",
+                                    "name": "Ganador del Partido",
+                                    "event": {
+                                        "626913821": {
+                                            "price": 2.35,
+                                            "name": "W1"
+                                        },
+                                        "626913822": {
+                                            "price": 2.86,
+                                            "name": ["X", "Y", "Z"]
+                                        },
+                                        "626913823": {
+                                            "price": 3.03,
+                                            "name": "W2"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
