@@ -201,7 +201,7 @@ class BSONTest {
 	void testHashCode() {
 
 		BSON b = bsonParser.parseObject("hello");
-		assertEquals(213585471, b.hashCode());
+		assertEquals(675414029, b.hashCode());
 	}
 
 	@Test
@@ -214,10 +214,10 @@ class BSONTest {
 	@SuppressWarnings("unchecked")
 	@Test
 	void testJSONString() {
-		assertEquals("2", bsonParser.parseObject(2).toJSONString());
-		assertEquals("2.23213", bsonParser.parseObject(2.23213).toJSONString());
-		assertEquals("-23232", bsonParser.parseObject(-23232).toJSONString());
-		assertEquals("1.23123123223213E9", bsonParser.parseObject(1231231232.23213d).toJSONString());
+		assertEquals("2", bsonParser.parseObject(2).toJSONString(bsonParser.getKeySubstitutor()));
+		assertEquals("2.23213", bsonParser.parseObject(2.23213).toJSONString(bsonParser.getKeySubstitutor()));
+		assertEquals("-23232", bsonParser.parseObject(-23232).toJSONString(bsonParser.getKeySubstitutor()));
+		assertEquals("1.23123123223213E9", bsonParser.parseObject(1231231232.23213d).toJSONString(bsonParser.getKeySubstitutor()));
 
 		Map<String, Object> map2 = new HashMap<>(
 				Map.of("hi", 123124, "hello", 989898l, "TrueValue", true, "FalseValue", Boolean.FALSE));
@@ -225,7 +225,7 @@ class BSONTest {
 		map2.put("arr", List.of(Boolean.TRUE, "Kevvu"));
 		Map<String, Object> map = Map.of("hiout", 3.5f, "helloout", 2.5f, "another", map2);
 
-		String string = bsonParser.parseObject(map).toJSONString();
+		String string = bsonParser.parseObject(map).toJSONString(bsonParser.getKeySubstitutor());
 		BSON bsonMap = new JSONParser().parseJSONString(string);
 
 		Map<String, Object> outMap = bsonMap.getAsMap(new DefaultKeySubstitutor());

@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedInputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +27,7 @@ class JSONParserGeneralTest {
 		                    "alias", "Europe",
 		                    "game", Map.of(
 		                        "11811809", Map.of(
-		                            "id", (int)11811809,
+		                            "xd", (int)11811809,
 		                            "team1_name", "Zorya Luhansk",
 		                            "team2_name", "SC Braga",
 		                            "market", Map.of(
@@ -50,7 +52,7 @@ class JSONParserGeneralTest {
 		                            )
 		                        ),
 		                        "11811810", Map.of(
-		                            "id", (int)11811810,
+		                            "xd", (int)11811810,
 		                            "team1_name", "Olympiacos Piraeus",
 		                            "team2_name", "FC Luzern",
 		                            "market", Map.of(
@@ -75,7 +77,7 @@ class JSONParserGeneralTest {
 		                            )
 		                        ),
 		                        "11844220", Map.of(
-		                            "id", 11844220,
+		                            "xd", 11844220,
 		                            "team1_name", "NK Domzale",
 		                            "team2_name", "FC Ufa",
 		                            "market", Map.of(
@@ -116,22 +118,29 @@ class JSONParserGeneralTest {
 	);
 	//@formatter:on
 
-	BSONParser bsonParser = new BSONParser();
-	JSONParser jsonParser = new JSONParser();
-
 	@Test
 	void testGeneral() {
 
-		TEST_PARSING.entrySet().stream().forEach(e -> testEachCase(e.getKey(), e.getValue()));
+		final JSONParser jsonParser = new JSONParser();
+		TEST_PARSING.entrySet().stream().forEach(e -> testEachCase(e.getKey(), e.getValue(), jsonParser));
 	}
 
-	void testEachCase(String key, JSONTestFileDefinition def) {
+	@Test
+	void testCustomSubstitutor() {
+
+		CustomKeySubstitutor c = new CustomKeySubstitutor();
+		final JSONParser jsonParser = new JSONParser(c);
+		TEST_PARSING.entrySet().stream().forEach(e -> testEachCase(e.getKey(), e.getValue(), jsonParser));
+	}
+
+	void testEachCase(String key, JSONTestFileDefinition def, JSONParser jsonParser) {
 
 		try (BufferedInputStream bis = new BufferedInputStream(
 				this.getClass().getClassLoader().getResourceAsStream(key))) {
 			String jsonText = new String(bis.readAllBytes());
 			try {
 				BSON b = jsonParser.parseJSONString(jsonText);
+
 				if (b.getType() == BSON.ARRAY) {
 					List<Object> list = b.getAsList(jsonParser.getKeySubstitutor());
 					assertEquals(def.getValue(), list);
@@ -183,5 +192,90 @@ class JSONParserGeneralTest {
 		}
 
 		return map;
+	}
+}
+
+class CustomKeySubstitutor implements KeySubstitutor {
+
+	Map<String, Integer> keyMap = new HashMap<>();
+	ArrayList<StoreObject> keyStore = new ArrayList<>();
+
+	@Override
+	public BSON getBSONFromKey(String key) {
+
+		if (!keyMap.containsKey(key)) {
+			this.create(key);
+		}
+
+		return keyStore.get(keyMap.get(key)).bson;
+	}
+
+	@Override
+	public byte[] getBytesFromKey(String key) {
+
+		if (!keyMap.containsKey(key)) {
+			this.create(key);
+		}
+
+		return keyStore.get(keyMap.get(key)).bson.bs;
+	}
+
+	private void create(String key) {
+
+		synchronized (keyMap) {
+
+			synchronized (keyStore) {
+
+				if (keyMap.containsKey(key))
+					return;
+
+				int ind = keyStore.size();
+
+				byte[] b;
+				if (ind < 128)
+					b = BSONParser.getBytes((byte) ind);
+				else if (ind < 32768)
+					b = BSONParser.getBytes((short) ind);
+				else
+					b = BSONParser.getBytes(ind);
+				BSON bson = new BSON(b);
+
+				keyStore.add(new StoreObject(key, bson));
+				keyMap.put(key, ind);
+			}
+		}
+	}
+
+	@Override
+	public String getKeyWithBSON(BSON bson) {
+
+		int ind;
+		if (bson.getType() == BSON.BYTE) {
+			ind = (byte) bson.getValue();
+		} else if (bson.getType() == BSON.SHORT) {
+			ind = (short) bson.getValue();
+		} else {
+			ind = bson.getValue();
+		}
+
+//		System.out.println(ind + " - " + this.keyStore.get(ind).key);
+		return this.keyStore.get(ind).key;
+	}
+
+	@Override
+	public String getKeyWithBytes(byte[] b) {
+
+		return this.getKeyWithBSON(new BSON(b));
+	}
+
+	static class StoreObject {
+
+		String key;
+		BSON bson;
+
+		public StoreObject(String key, BSON bson) {
+			this.key = key;
+			this.bson = bson;
+		}
 	}
 }

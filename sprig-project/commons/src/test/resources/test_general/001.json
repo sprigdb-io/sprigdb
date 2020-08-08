@@ -9,7 +9,7 @@
                     "alias": "Europe",
                     "game": {
                         "11811809": {
-                            "id": 11811809,
+                            "xd": 11811809,
                             "team1_name": "Zorya Luhansk",
                             "team2_name": "SC Braga",
                             "market": {
@@ -34,7 +34,7 @@
                             }
                         },
                         "11811810": {
-                            "id": 11811810,
+                            "xd": 11811810,
                             "team1_name": "Olympiacos Piraeus",
                             "team2_name": "FC Luzern",
                             "market": {
@@ -59,7 +59,7 @@
                             }
                         },
                         "11844220": {
-                            "id": 11844220,
+                            "xd": 11844220,
                             "team1_name": "NK Domzale",
                             "team2_name": "FC Ufa",
                             "market": {

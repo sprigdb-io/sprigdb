@@ -248,7 +248,6 @@ public class JSONParser {
 
 			++p;
 			if (isKey) {
-
 				while (p < totalLength && c[p] != ':' && (c[p] == '\t' || c[p] == '\n' || c[p] == ' ')) {
 					++p;
 				}

@@ -1,14 +1,18 @@
 package io.sprigdb.commons.bson;
 
-import static io.sprigdb.commons.bson.BSONValueExtractors.*;
+import static io.sprigdb.commons.bson.BSONValueExtractors.BIG_DECIMAL_EXTRACTOR;
+import static io.sprigdb.commons.bson.BSONValueExtractors.BIG_INTEGER_EXTRACTOR;
+import static io.sprigdb.commons.bson.BSONValueExtractors.BOOLEAN_FALSE_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.BOOLEAN_TRUE_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.BSON_LIST_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.BSON_OBJECT_EXTRACTOR;
+import static io.sprigdb.commons.bson.BSONValueExtractors.BYTE_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.DOUBLE_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.FLOAT_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.INTEGER_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.LONG_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.NULL_EXTRACTOR;
+import static io.sprigdb.commons.bson.BSONValueExtractors.SHORT_EXTRACTOR;
 import static io.sprigdb.commons.bson.BSONValueExtractors.STRING_EXTRACTOR;
 
 import java.util.HashMap;
@@ -20,6 +24,7 @@ import io.sprigdb.commons.exceptions.BSONDisorientedException;
 import io.sprigdb.commons.exceptions.BSONEmptyException;
 import io.sprigdb.commons.serializer.Marshallable;
 import io.sprigdb.commons.util.HexUtil;
+import io.sprigdb.commons.util.MurmurHash3Util;
 
 public class BSON implements Marshallable {
 
@@ -173,13 +178,7 @@ public class BSON implements Marshallable {
 	@Override
 	public int hashCode() {
 
-		int result = 1;
-		for (int i = this.offset; i < (this.offset + this.length); i++) {
-
-			result = 31 * result + (this.bs[i] & 0xff) ^ (this.bs[i] >>> 32);
-		}
-
-		return result;
+		return MurmurHash3Util.hashBytes(bs, offset, length);
 	}
 
 	@Override
@@ -227,11 +226,11 @@ public class BSON implements Marshallable {
 		this.length = bytes.length;
 	}
 
-	public String toJSONString() {
-		return recursiveJSONBuild(this).toString();
+	public String toJSONString(KeySubstitutor substitutor) {
+		return recursiveJSONBuild(this, substitutor).toString();
 	}
 
-	private StringBuilder recursiveJSONBuild(BSON obj) {
+	private StringBuilder recursiveJSONBuild(BSON obj, KeySubstitutor substitutor) {
 
 		switch (obj.getType()) {
 		case INTEGER:
@@ -254,28 +253,28 @@ public class BSON implements Marshallable {
 			return new StringBuilder("\"").append(((String) obj.getValue())).append("\"");
 
 		case ARRAY:
-			return toJSONArrayString(obj);
+			return toJSONArrayString(obj, substitutor);
 
 		case OBJECT:
-			return toJSONObjectString(obj);
+			return toJSONObjectString(obj, substitutor);
 
 		default:
 			return new StringBuilder("null");
 		}
 	}
 
-	private StringBuilder toJSONObjectString(BSON obj) {
+	private StringBuilder toJSONObjectString(BSON obj, KeySubstitutor substitutor) {
 
 		StringBuilder sb = new StringBuilder("{");
 		List<BSON> values = BSONValueExtractors.BSON_LIST_EXTRACTOR.getValue(obj, obj.offset);
 		int lmt = values.size() / 2;
 		for (int i = 0; i < lmt; i++) {
-			sb.append(this.recursiveJSONBuild(values.get(i * 2))).append(':');
+			sb.append("\"").append(substitutor.getKeyWithBSON(values.get(i * 2))).append("\"").append(':');
 			BSON b = values.get((i * 2) + 1);
 			if (b.getType() == OBJECT)
-				sb.append(b.toJSONString());
+				sb.append(b.toJSONString(substitutor));
 			else
-				sb.append(this.recursiveJSONBuild(b));
+				sb.append(this.recursiveJSONBuild(b, substitutor));
 			if (i + 1 != lmt)
 				sb.append(',');
 		}
@@ -283,12 +282,12 @@ public class BSON implements Marshallable {
 		return sb;
 	}
 
-	private StringBuilder toJSONArrayString(BSON obj) {
+	private StringBuilder toJSONArrayString(BSON obj, KeySubstitutor substitutor) {
 
 		StringBuilder sb = new StringBuilder("[");
 		List<BSON> lst = obj.getValue();
 		for (int i = 0; i < lst.size(); i++) {
-			sb.append(this.recursiveJSONBuild(lst.get(i)));
+			sb.append(this.recursiveJSONBuild(lst.get(i), substitutor));
 			if (i + 1 != lst.size())
 				sb.append(',');
 		}
